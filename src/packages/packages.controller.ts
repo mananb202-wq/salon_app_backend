@@ -6,6 +6,7 @@ import { AuthGuard } from '@nestjs/passport';
 import {BranchIdDto} from '../salon/dto/branch-id.dto'
 import {UpdatePackageDto} from '../packages/dto/update-package.dto'
 
+
 @Controller('packages')
 export class PackagesController {
   constructor(private readonly packagesService: PackagesService) {}
@@ -33,6 +34,15 @@ export class PackagesController {
   updatePackages(@Param("packageId",ParseIntPipe) packageId:number ,@Body() dto: UpdatePackageDto){
     return this.packagesService.updatePackage(packageId,dto)
   }
+
+  
+  @UseGuards(AuthGuard('jwt'))
+  @Post('/buy/:packageId/:customerId')
+  buyPackage(@Param("packageId",ParseIntPipe) packageId:number ,@Param("customerId",ParseIntPipe) customerId:number ){
+    return this.packagesService.buyPackage(packageId,customerId)
+  }
+
+  
 
 
 

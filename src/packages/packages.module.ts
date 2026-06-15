@@ -5,12 +5,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import {AuthModule} from "../auth/auth.module"
 import {PackageEntity} from './entities/package.entity'
 import {ConsumerService} from '../consumer_service/entities/consumer_service.entity'
+import { BuyPackageEntity } from './entities/buy-package.entity';
 
 
 
 @Module({
   imports: [
-        TypeOrmModule.forFeature([PackageEntity,ConsumerService]),
+        TypeOrmModule.forFeature([PackageEntity,ConsumerService,BuyPackageEntity]),
           AuthModule,
       ],
   controllers: [PackagesController],
