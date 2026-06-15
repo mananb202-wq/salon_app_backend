@@ -6,6 +6,7 @@ import {PackageEntity} from './entities/package.entity'
 import {ConsumerService} from '../consumer_service/entities/consumer_service.entity'
 import { BranchIdDto } from '../salon/dto/branch-id.dto';
 import {UpdatePackageDto} from './dto/update-package.dto'
+import { BuyPackageEntity } from './entities/buy-package.entity';
 
 @Injectable()
 export class PackagesService {
@@ -16,6 +17,10 @@ export class PackagesService {
 
       @InjectRepository(ConsumerService)
        private servicesRepo: Repository<ConsumerService>,
+       
+      @InjectRepository(BuyPackageEntity)
+       private buyPackageRepo: Repository<BuyPackageEntity>,
+        
         
     ){}
 
@@ -325,6 +330,79 @@ async updatePackage(
 }
 
 
+
+
+
+async buyPackage(packageId:number,customerId){
+ 
+ 
+ const packageData= await this.packageRepo.findOne({
+  where:{
+    id:packageId
+  },
+    relations: {
+    services: true,
+  },
+ });
+
+ if(!packageData){
+      throw new BadRequestException(
+        'package not found',
+      );
+ }
+
+const seviceIds= packageData.services.map(service => service.id);
+
+for(let  i=0;i<seviceIds.length;i++){
+ 
+const packageService= this.buyPackageRepo.create({
+
+  package:{
+    id:packageId
+  },
+  services:{
+    id:seviceIds[i]
+  },
+  costomer:{
+    id:customerId
+  }
+
+  });
+ try {
+  await this.buyPackageRepo.save(packageService);
+} catch (error) {
+  throw new BadRequestException(
+    `Failed to save service with id ${seviceIds[i]}`,
+  );
+}
+
+ }
+
+ const boughtPackage= await this.buyPackageRepo.find({
+ where:{
+   costomer:{
+    id:customerId
+   },
+   package:{
+    id:packageId
+   }
+ },
+ relations:{
+  package:true,
+  services:true,
+  costomer:true,
+ }
+ });
+
+
+
+ return {
+  success:true,
+  message:"you have bought the package",
+  data:boughtPackage
+ }
+
+}
 
   
 }

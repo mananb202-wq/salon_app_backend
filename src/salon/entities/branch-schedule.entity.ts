@@ -42,6 +42,4 @@ export class BranchSchedule{
     name: 'dayId',
   })
   workingday!: WorkingDays;
-
-
 }
