@@ -38,4 +38,12 @@ getDeals(@Body() dto:BranchIdDto){
 }
 
 
+@UseGuards(AuthGuard('jwt'))
+@Post('buy/:dealId/:customerId')
+buyDeals(@Param('dealId',ParseIntPipe) dealId:number, @Param('customerId',ParseIntPipe) customerId:number){
+  return this.dealsService.buyDeal(dealId,customerId)
+}
+
+
+
 }

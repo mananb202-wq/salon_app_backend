@@ -7,7 +7,8 @@ import {DealsEntity} from './entities/create-deals.entity'
 import {DeleteDealDto} from './dto/delete-deal.dto'
 import {UpdateDealDto} from './dto/update-deal.dto'
 import {BranchIdDto} from '../salon/dto/branch-id.dto'
-import { truncate } from 'fs';
+import {BuyDealEntity} from './entities/buy-deal.entity'
+import { CustomerEntity } from '../customer/entities/create-customer.entity';
  
 
 
@@ -20,6 +21,14 @@ export class DealsService {
      
       @InjectRepository(DealsEntity)
       private dealsRepo: Repository<DealsEntity>,
+
+      
+      @InjectRepository(BuyDealEntity)
+      private buyDealsRepo: Repository<BuyDealEntity>,
+
+      @InjectRepository(CustomerEntity)
+      private customerRepo: Repository<CustomerEntity>,
+
      ){}
 
     async createDeal(dto: CreateDealDto) {
@@ -117,7 +126,7 @@ export class DealsService {
   const dealTypeId =
     dto.dealTypeId ?? deal.deal_type.id;
 
-  // Update basic fields FIRST (safe assignment)
+
   if (dto.name !== undefined) deal.name = dto.name;
   if (dto.originalPrice !== undefined) deal.originalPrice = dto.originalPrice;
   if (dto.isActive !== undefined) deal.isActive = dto.isActive;
@@ -245,6 +254,54 @@ export class DealsService {
         message:"deals are send",
         data:deals
       }
+
+    }
+
+    async buyDeal(dealId:number,customerId:number){
+     
+      const dealExists= await this.dealsRepo.findOne({
+       where : {
+         id:dealId,
+       },
+      });
+
+      if(!dealExists){
+         throw new BadRequestException(
+        'deal does not exists',
+      );
+    }
+
+    const customerExists= await this.customerRepo.findOne({
+      where:{
+        id:customerId,
+      },
+    });
+
+
+    if(!customerExists){
+      throw new BadRequestException(
+        'customer does not exists'
+      );
+    };
+
+
+    const createBuyDeal= await this.buyDealsRepo.create({
+      deal:{
+      id:dealId,
+      },
+      customer:{
+        id:customerId
+      },  
+    })
+    try{
+    await this.buyDealsRepo.save(createBuyDeal)
+    }catch(error){
+      throw new BadRequestException(
+        'Failed to save deal in the database'
+      )
+    }
+
+     
 
     }
 
