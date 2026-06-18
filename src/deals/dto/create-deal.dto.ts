@@ -1,17 +1,16 @@
 import {
-  IsString,
-  IsNumber,
+  IsArray,
   IsBoolean,
-  IsNotEmpty,
-  IsOptional,
   IsDateString,
-  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
   Min,
   Max,
 } from 'class-validator';
 
 export class CreateDealDto {
-
   @IsNotEmpty()
   @IsString()
   name!: string;
@@ -22,32 +21,28 @@ export class CreateDealDto {
 
   @IsNotEmpty()
   @IsNumber()
-  serviceId!: number;
-
-  @IsNotEmpty()
-  @IsNumber()
   dealTypeId!: number;
 
   @IsNotEmpty()
-  @IsNumber()
-  originalPrice!: number;
-
-
-  @IsOptional()
-  @IsNumber()
-  value?: number;
-
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(100)
-  percentage?: number;
-
+  @IsArray()
+  @IsNumber({}, { each: true })
+  serviceIds!: number[];
 
   @IsOptional()
   @IsNumber()
+  @Min(0.01)
+  @Max(99.99)
+  percentageDiscount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
   maxDiscountAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  discountAmount?: number;
 
   @IsNotEmpty()
   @IsBoolean()

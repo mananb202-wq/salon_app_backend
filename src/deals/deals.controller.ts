@@ -2,7 +2,6 @@ import { Controller, Get, Post, Body, Patch, Param, Delete,ParseIntPipe } from '
 import { DealsService } from './deals.service';
 import {CreateDealDto} from './dto/create-deal.dto'
 import {DeleteDealDto} from './dto/delete-deal.dto'
-import {UpdateDealDto} from './dto/update-deal.dto'
 import { UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import {BranchIdDto} from '../salon/dto/branch-id.dto'
@@ -23,13 +22,6 @@ export class DealsController {
 deleteDeal(@Param('index',ParseIntPipe) index:number,@Body() dto:DeleteDealDto){
   return this.dealsService.deleteDeal(index,dto)
 }
-
-@UseGuards(AuthGuard('jwt'))
-@Patch('update/:index')
-updateDeal(@Param('index',ParseIntPipe) index:number,@Body() dto:UpdateDealDto){
-  return this.dealsService.updateDeal(index,dto)
-}
-
 
 @UseGuards(AuthGuard('jwt'))
 @Get('/')

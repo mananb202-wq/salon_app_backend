@@ -8,7 +8,9 @@ import {
   IsNotEmpty,
     Min,
   Max,
+  IsEnum
 } from 'class-validator';
+import { DurationType } from '../entities/package.entity';
 
 export class CreatePackage{
  
@@ -26,6 +28,13 @@ branchId!:number;
 @IsNumber()
 dealType!:number;
 
+
+@IsNotEmpty()
+@IsNumber()
+duration!:number;
+
+@IsEnum(DurationType)
+durationType!: DurationType;
 
 @IsNotEmpty()
 @IsArray()
@@ -49,13 +58,5 @@ maxDiscountAmount?: number;
 
 @IsBoolean()
 isActive!: boolean;
-
-@IsNotEmpty()
-@IsDateString()
-startDate!: string;
-
-@IsNotEmpty()
-@IsDateString()
-endDate!: string;
 
 }

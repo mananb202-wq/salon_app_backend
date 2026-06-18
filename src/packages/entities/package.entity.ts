@@ -8,6 +8,12 @@ import {
   JoinColumn
 } from 'typeorm';
 
+  export enum DurationType {
+  DAYS = 'days',
+  MONTHS = 'months',
+  YEARS = 'years',
+}
+
 import { BranchEntity } from '../../salon/entities/branch.entity';
 import { ConsumerService } from '../../consumer_service/entities/consumer_service.entity';
 import { DealTypeEntity } from '../../deals/entities/deal-type.entity';
@@ -51,6 +57,14 @@ export class PackageEntity {
   })
   services!: ConsumerService[];
 
+@Column()
+duration!: number;
+
+@Column({
+  type: 'enum',
+  enum: DurationType,
+})
+durationType!: DurationType;
 
   @Column('decimal', {
     precision: 10,
@@ -84,16 +98,6 @@ export class PackageEntity {
     default: true,
   })
   isActive!: boolean;
-
-  @Column({
-    type: 'timestamp',
-  })
-  startDate!: Date;
-
-  @Column({
-    type: 'timestamp',
-  })
-  endDate!: Date;
 
   @Column('decimal', {
   precision: 10,

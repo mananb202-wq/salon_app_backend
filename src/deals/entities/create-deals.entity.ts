@@ -4,6 +4,8 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  ManyToMany,
+  JoinTable
 } from 'typeorm';
 
 import { BranchEntity } from '../../salon/entities/branch.entity';
@@ -27,51 +29,74 @@ export class DealsEntity {
   })
   branch!: BranchEntity;
 
-  @ManyToOne(() => ConsumerService)
-  @JoinColumn({
-    name: 'serviceId',
-  })
-  services!: ConsumerService;
-
-  @ManyToOne(() => DealTypeEntity)
-  @JoinColumn({
-    name: 'dealTypeId',
-  })
-  deal_type!: DealTypeEntity;
-
-  @Column('decimal', {
-    precision: 10,
-    scale: 2,
-  })
-  originalPrice!: number;
-
   
-  @Column('decimal', {
+
+  @ManyToMany(() => ConsumerService)
+  @JoinTable({
+    name: 'deal_services',
+    joinColumn: {
+      name: 'dealId',
+      referencedColumnName: 'id',
+    },
+    inverseJoinColumn: {
+      name: 'serviceId',
+      referencedColumnName: 'id',
+    },
+  })
+  services!: ConsumerService[];
+
+   @ManyToOne(
+    () => DealTypeEntity,
+    {
+      onDelete: 'CASCADE',
+    },
+  )
+  @JoinColumn({
+    name:"dealType"
+  })
+
+  dealType!: DealTypeEntity;
+
+ @Column('decimal', {
     precision: 10,
     scale: 2,
-    nullable: true,
   })
-  value?: number;
+  totalPrice!: number;
 
-  @Column('decimal', {
+    @Column('decimal', {
     precision: 5,
     scale: 2,
     nullable: true,
   })
-  percentage?: number;
+  percentageDiscount?: number| null;
 
  
   @Column('decimal', {
-    precision: 10,
-    scale: 2,
-    nullable: true,
+  precision: 10,
+  scale: 2,
+  nullable: true,
   })
-  maxDiscountAmount?: number;
+  maxDiscountAmount?:  number | null;
+
+ 
+  @Column('decimal', {
+  precision: 10,
+  scale: 2,
+  })
+  finalPrice!: number;
+ 
 
   @Column({
     default: true,
   })
   isActive!: boolean;
+
+  @Column('decimal', {
+  precision: 10,
+  scale: 2,
+  nullable: true,
+})
+discountAmount?: number | null;
 
   @Column({
     type: 'timestamp',

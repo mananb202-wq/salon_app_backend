@@ -34,5 +34,11 @@ export class BuyDealEntity {
           nullable: true,
          })
          usedAt!: Date;
+
+          @Column({
+          type: 'timestamptz',
+          nullable: true,
+         })
+         expiresAt!: Date;
        
 }
