@@ -2,7 +2,7 @@ import { Injectable,BadRequestException, NotFoundException } from '@nestjs/commo
 import {CreatePackage} from './dto/create-package.dto'
 import {InjectRepository} from "@nestjs/typeorm";
 import {Repository} from "typeorm";
-import {PackageEntity} from './entities/package.entity'
+import {DurationType, PackageEntity} from './entities/package.entity'
 import {ConsumerService} from '../consumer_service/entities/consumer_service.entity'
 import { BranchIdDto } from '../salon/dto/branch-id.dto';
 import {UpdatePackageDto} from './dto/update-package.dto'
@@ -97,8 +97,8 @@ async addPackage(dto:CreatePackage, req:any){
       finalPrice,
       percentageDiscount: dto.percentageDiscount,
       maxDiscountAmount:dto.maxDiscountAmount,
-      startDate: dto.startDate,
-      endDate: dto.endDate,
+      duration:dto.duration,
+      durationType:dto.durationType,
       isActive: dto.isActive,
       discountAmount:dto.discountAmount,
       dealType: {
@@ -186,17 +186,7 @@ async updatePackage(
     getPackage.isActive = dto.isActive;
   }
 
-  if (dto.startDate !== undefined) {
-    getPackage.startDate = new Date(
-      dto.startDate,
-    );
-  }
 
-  if (dto.endDate !== undefined) {
-    getPackage.endDate = new Date(
-      dto.endDate,
-    );
-  }
 
  
   if (dto.dealType !== undefined) {
@@ -350,6 +340,28 @@ async buyPackage(packageId:number,customerId){
         'package not found',
       );
  }
+const expiresAt = new Date();
+
+switch (packageData.durationType) {
+  case DurationType.DAYS:
+    expiresAt.setDate(
+      expiresAt.getDate() + packageData.duration,
+    );
+    break;
+
+  case DurationType.MONTHS:
+    expiresAt.setMonth(
+      expiresAt.getMonth() + packageData.duration,
+    );
+    break;
+
+  case DurationType.YEARS:
+    expiresAt.setFullYear(
+      expiresAt.getFullYear() + packageData.duration,
+    );
+    break;
+}
+ 
 
 const seviceIds= packageData.services.map(service => service.id);
 
@@ -365,7 +377,8 @@ const packageService= this.buyPackageRepo.create({
   },
   costomer:{
     id:customerId
-  }
+  },
+  expiresAt
 
   });
  try {
@@ -393,8 +406,6 @@ const packageService= this.buyPackageRepo.create({
   costomer:true,
  }
  });
-
-
 
  return {
   success:true,

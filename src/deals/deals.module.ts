@@ -5,13 +5,16 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import {AuthModule} from "../auth/auth.module"
 import {DealTypeEntity} from './entities/deal-type.entity';
 import {DealsEntity} from './entities/create-deals.entity'
+import { BuyDealEntity } from './entities/buy-deal.entity';
+import { CustomerEntity } from '../customer/entities/create-customer.entity';
+import { ConsumerService } from '../consumer_service/entities/consumer_service.entity';
 
 
 
 @Module({
 
    imports: [
-        TypeOrmModule.forFeature([DealTypeEntity,DealsEntity]),
+        TypeOrmModule.forFeature([DealTypeEntity,DealsEntity,BuyDealEntity,CustomerEntity,ConsumerService]),
           AuthModule,
       ],
   controllers: [DealsController],
