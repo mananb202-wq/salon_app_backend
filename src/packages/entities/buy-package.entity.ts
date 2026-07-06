@@ -49,5 +49,4 @@ export class BuyPackageEntity{
     nullable: true,
      })
     expiresAt!: Date;
-    
 }
