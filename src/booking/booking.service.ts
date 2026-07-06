@@ -1,6 +1,6 @@
 import { Injectable ,BadRequestException} from '@nestjs/common';
 import {InjectRepository} from "@nestjs/typeorm";
-import {Repository} from "typeorm";
+import {In, Repository} from "typeorm";
 import {BranchSchedule} from '../salon/entities/branch-schedule.entity'
 import {BranchScheduleDto} from './dto/branch-schedule-dto'
 import { BookingDto } from './dto/booking-slot.dto';
@@ -9,9 +9,16 @@ import { TeamMember } from '../team_member/entities/team_member.entity';
 import { ConsumerService } from '../consumer_service/entities/consumer_service.entity';
 import { BranchEntity } from '../salon/entities/branch.entity';
 import { TeamMemberScheduleEntity } from '../team_member/entities/team_member-schedule.entity';
-import { BookingEntity ,BookingStatus } from './entities/booking.entity';
+import { BookingEntity ,BookingItemType,BookingStatus } from './entities/booking.entity';
+import { BookingReservation, ReservationStatus } from './entities/booking_reservation.entity';
+import { PackageEntity } from '../packages/entities/package.entity';
+import { DealsEntity } from '../deals/entities/create-deals.entity';
+import { RazorpayService } from '../payment/razorpay.service';
+import { PaymentEntity, PaymentStatus } from '../payment/entities/payment.entity';
+import { OtpEntity } from '../salon/entities/otp.entity';
 @Injectable()
 export class BookingService {
+  
       constructor(
          @InjectRepository(BranchSchedule)
           private branchServiceRepo: Repository<BranchSchedule>,
@@ -30,10 +37,32 @@ export class BookingService {
           private branchRepo: Repository<BranchEntity>,
 
              @InjectRepository(TeamMemberScheduleEntity)
-          private teamMemberScheduleRepo: Repository<TeamMemberScheduleEntity>,
+            private teamMemberScheduleRepo: Repository<TeamMemberScheduleEntity>,
 
-               @InjectRepository(BookingEntity)
-          private bookingRepo: Repository<BookingEntity>,
+             @InjectRepository(BookingEntity)
+              private bookingRepo: Repository<BookingEntity>,
+
+             @InjectRepository(BookingReservation)
+             private BookingReservationRepo: Repository<BookingReservation>,
+             
+                 @InjectRepository(ConsumerService)
+               private customerServiceRepo: Repository<ConsumerService>,
+
+                    @InjectRepository(PackageEntity)
+               private packageRepo: Repository<PackageEntity>,
+
+                  @InjectRepository(PaymentEntity)
+               private paymentRepo: Repository<PaymentEntity>,
+
+                   @InjectRepository(DealsEntity)
+               private dealRepo: Repository<DealsEntity>,
+
+               
+                    @InjectRepository(OtpEntity)
+                     private otpRepo: Repository<OtpEntity>,
+               
+
+               private readonly razorpayService: RazorpayService,
 
 
 
@@ -54,6 +83,64 @@ convertTimeToMinutes(branchTime: string): number {
 
   return hours * 60 + minutes;
 
+}
+
+private calculateEndTime(
+  startTime: string,
+  durationInMinutes: number,
+): string {
+  const [time, period] = startTime.split(' ');
+
+  let [hours, minutes] = time
+    .split(':')
+    .map(Number);
+
+  if (period === 'AM') {
+    if (hours === 12) {
+      hours = 0;
+    }
+  } else {
+    if (hours !== 12) {
+      hours += 12;
+    }
+  }
+
+  const startMinutes =
+    hours * 60 + minutes;
+
+  const endMinutes =
+    startMinutes + durationInMinutes;
+
+  const endHours =
+    Math.floor(endMinutes / 60) % 24;
+
+  const remainingMinutes =
+    endMinutes % 60;
+
+  return `${String(endHours).padStart(2, '0')}:${String(remainingMinutes).padStart(2, '0')}:00`;
+}
+
+private convertTo24HourFormat(
+  time12h: string,
+): string {
+  const [time, modifier] =
+    time12h.trim().split(' ');
+
+  let [hours, minutes] = time
+    .split(':')
+    .map(Number);
+
+  if (modifier === 'AM') {
+    if (hours === 12) {
+      hours = 0;
+    }
+  } else if (modifier === 'PM') {
+    if (hours !== 12) {
+      hours += 12;
+    }
+  }
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
 }
 
 convertDurationToMinutes(
@@ -128,9 +215,12 @@ convertMinutesToTime(totalMinutes: number): string {
         data:slots
     }
     }
-async bookSlot( dto:BookingDto){
+
+
+
+  async bookSlot( dto:BookingDto){
     
-  const customer = await this.customerRepo.findOne({
+    const customer = await this.customerRepo.findOne({
     where: {
       id: dto.customerId,
     },
@@ -154,11 +244,18 @@ async bookSlot( dto:BookingDto){
     );
   }
 
-  const service = await this.consumerServiceRepo.findOne({
-    where: {
-      id: dto.serviceId,
-    },
-  });
+if (!dto.serviceIds || dto.serviceIds.length === 0) {
+  throw new BadRequestException(
+    'serviceIds is required',
+  );
+}
+
+const service = await this.consumerServiceRepo.find({
+  where: {
+    id: In(dto.serviceIds),
+  },
+});
+
 
   if (!service) {
     throw new BadRequestException(
@@ -178,8 +275,6 @@ async bookSlot( dto:BookingDto){
     );
   }
 
-
-
   const teamMemberSchedule =
     await this.teamMemberScheduleRepo.findOne({
       where: {
@@ -189,6 +284,7 @@ async bookSlot( dto:BookingDto){
         workingDay: {
           id: dto.dayId,
         },
+        isWorking:true 
       },
     });
 
@@ -203,6 +299,7 @@ async bookSlot( dto:BookingDto){
       'Team member is not working on this day',
     );
   }
+
 
   let bookingTimeInMin =
     this.convertTimeToMinutes(
@@ -244,73 +341,197 @@ async bookSlot( dto:BookingDto){
     );
   }
 
-  const existingBooking =
-    await this.bookingRepo.findOne({
-      where: {
-        bookingDate: dto.bookingDate,
-        bookingTime: dto.bookingTime,
-        teamMember: {
-          id: dto.teamMemberId,
-        },
-      },
-    });
 
-  if (existingBooking) {
-    throw new BadRequestException(
-      'Slot already booked',
-    );
+  let duration=0;
+  let totalAmount=0;
+  let bookingType;
+
+  if(dto.serviceIds!== undefined && dto.packageId === undefined && dto.dealId === undefined){
+ 
+    for(let i=0;i<dto.serviceIds.length;i++){
+     
+      const service= await this.customerServiceRepo.findOne({
+      where:{
+        id:dto.serviceIds[i]
+      }
+     });
+
+
+
+    if (!service) {
+       throw new BadRequestException(
+        'Service not found',
+       );
+      }
+     
+    totalAmount+=Number(service.price);
+
+    duration +=
+      this.convertDurationToMinutes(
+        service.duration
+      );
+
+    }
+
+    bookingType=BookingItemType.SERVICE
+    }
+
+
+    if(dto.packageId!== undefined && dto.serviceIds !== undefined){
+
+      const packageData= await this.packageRepo.findOne({
+        where:{
+          id:dto.packageId
+        }  
+        ,relations: {
+         services: true,
+       },
+      })
+
+      if(!packageData){
+        throw new BadRequestException("package not found");
+      }
+
+       for(let i=0;i<dto.serviceIds.length;i++){
+     
+      const service= await this.customerServiceRepo.findOne({
+      where:{
+        id:dto.serviceIds[i]
+      }
+     });
+
+
+
+    if (!service) {
+       throw new BadRequestException(
+        'Service not found',
+       );
+      }
+     
+    totalAmount+=Number(service.price);
+
+    duration +=
+      this.convertDurationToMinutes(
+        service.duration
+      );
+
+    }
+
+    
+    bookingType=BookingItemType.PACKAGE
   }
 
-  const booking =
-    this.bookingRepo.create({
-      customer: {
-        id: dto.customerId,
-      },
+      if(dto.dealId!== undefined  && dto.serviceIds !== undefined){
+
+      const dealData= await this.dealRepo.findOne({
+        where:{
+          id:dto.dealId
+        }
+         ,relations: {
+         services: true,
+       },
+      })
+
+      if(!dealData){
+        throw new BadRequestException("deal not found");
+      }
+
+    
+       for(let i=0;i<dto.serviceIds.length;i++){
+     
+      const service= await this.customerServiceRepo.findOne({
+      where:{
+        id:dto.serviceIds[i]
+      }
+     });
+
+
+
+    if (!service) {
+       throw new BadRequestException(
+        'Service not found',
+       );
+      }
+     
+    totalAmount+=Number(service.price);
+
+    duration +=
+      this.convertDurationToMinutes(
+        service.duration
+      );
+    }
+      bookingType=BookingItemType.DEAL
+  }
+
+   const reservations = await this.BookingReservationRepo.find({
+    where: {
+      bookingDate: dto.bookingDate,
       teamMember: {
         id: dto.teamMemberId,
       },
-      service: {
-        id: dto.serviceId,
-      },
-      branch: {
-        id: dto.branchId,
-      },
-      bookingDate: dto.bookingDate,
-      bookingTime: dto.bookingTime,
-      status: BookingStatus.CONFIRMED,
-      dayId:{
-        id:dto.dayId
-      }
-
-    });
-
-  await this.bookingRepo.save(
-    booking,
-  );
- 
-  const getBooking = await this.bookingRepo.findOne({
-    where:{
-      id:booking.id
+      status: In([
+        ReservationStatus.RESERVED,
+        ReservationStatus.CONFIRMED,
+      ]),
     },
-    relations:{
-      branch:true,
-      service:true,
-      teamMember:true,
-      customer:true,
-      dayId:true
-    }
   });
 
 
-  const occupiedSlots: string[] = [];
+  const newStart = this.convertTimeToMinutes(this.convertTo24HourFormat( dto.bookingTime,),);
+  const newEnd = newStart + duration;
+
+  for (const reservation of reservations) {
+  const existingStart =
+    this.convertTimeToMinutes(
+      reservation.slotStartTime,
+    );
+
+  const existingEnd =
+    this.convertTimeToMinutes(
+      reservation.slotEndTime,
+    );
+
+  const overlap =
+    newStart < existingEnd &&
+    newEnd > existingStart;
+
+  if (overlap) {
+    throw new BadRequestException(
+      'Slot already reserved',
+    );
+  }
+}
+
+  const reservedUntil = new Date(
+  Date.now() + 10 * 60 * 1000,
+);
+  
+
+const reservation = this.BookingReservationRepo.create({
+    customer: {
+      id: dto.customerId,
+    },
+    teamMember: {
+      id: dto.teamMemberId,
+    },
+    branch: {
+      id: dto.branchId,
+    },
+    slotStartTime:this.convertTo24HourFormat(dto.bookingTime),
+    slotEndTime: this.calculateEndTime(dto.bookingTime,duration),
+    status: ReservationStatus.RESERVED,
+    reservedUntil,
+    bookingDate:dto.bookingDate
+  });
+
+await this.BookingReservationRepo.save(reservation);
+
+const occupiedSlots: string[] = [];
 
 const bookingStart =
   this.convertTimeToMinutes(
-    booking.bookingTime,
+  dto.bookingTime
   );
-
-const duration =
-  this.convertDurationToMinutes(service.duration);
 
 for (
   let time = bookingStart;
@@ -322,18 +543,215 @@ for (
   );
 }
 
-  return {
-    success: true,
-    message:
-      'Booking created successfully',
-    data:{getBooking,
-        slots:occupiedSlots
-    }
+if(dto.serviceIds!== undefined && (dto.packageId !== undefined || dto.dealId !== undefined)){
+  
+const getReservation = await this.BookingReservationRepo.findOne({
+  where:{
+    slotStartTime:dto.bookingTime,
+    customer:{
+      id:dto.customerId
+    },
+    teamMember:{
+      id:dto.teamMemberId
+    },
+    status:ReservationStatus.RESERVED
+  }
+})
 
-  };
-        
+const payments = await this.paymentRepo.findOne({
+    where: { reservation:{
+    id : getReservation?.id
+    } 
+  }
+   
+  });
 
-        
-    }
+
+
+  reservation.status = ReservationStatus.CONFIRMED;
+  await this.BookingReservationRepo.save(reservation);  
+
+for(let i=0;i<dto.serviceIds.length; i++){
+  const booking = this.bookingRepo.create({
+  branch: { id: dto.branchId },
+  service: { id: dto.serviceIds[i] },
+  teamMember: { id: dto.teamMemberId },
+  customer: { id: dto.customerId },
+  dayId: { id: dto.dayId },
+  bookingItemType: bookingType,
+  bookingDate: dto.bookingDate,
+  bookingTime: dto.bookingTime,
+  payment: { 
+    id: payments?.id },
+});
+
+if (dto.packageId) {
+  booking.package = { id: dto.packageId } as any;
+}
+
+if (dto.dealId) {
+  booking.deal = { id: dto.dealId } as any;
+}
+
+await this.bookingRepo.save(booking);
+}
+}
+
+if(dto.serviceIds!== undefined && dto.packageId === undefined && dto.dealId === undefined){
+const order = await this.razorpayService.createOrder(
+    totalAmount,
+    `reservation_${reservation.id}`,
+  );
+
+
+
+for(let i=0;i<dto.serviceIds.length;i++){
+
+    const service= await this.customerServiceRepo.findOne({
+      where:{
+        id:dto.serviceIds[i]
+      }
+     });
+
+
+const payment = this.paymentRepo.create({
+  reservation: {
+    id: reservation.id,
+  },
+  razorpayOrderId: order.id,
+  amount:service?.price,
+  status: PaymentStatus.PENDING,
+  reservedUntil,
+  service:{
+    id:dto.serviceIds[i]
+  }
+});
+
+await this.paymentRepo.save(payment);
+}
+
+
+return {
+  success: true,
+  message: 'Slot reserved, proceed to payment',
+  data: {
+    branchId: dto.branchId,
+    service:dto.serviceIds,
+    teamMemberId:dto.teamMemberId,
+    customerId:dto.customerId,
+    dayId:dto.dayId,
+    BookingItemType:bookingType,
+    dealId:dto.dealId,
+    bookingDate:dto.bookingDate,
+    bookingTime:dto.bookingTime,
+    packageId:dto.packageId,
+    reservationId: reservation.id,
+    orderId: order.id,
+    amount: order.amount,
+    currency: order.currency,
+    keyId: process.env.RAZORPAY_KEY_ID,
+    occupiedSlots
+  },
+};
 
 }
+
+}
+
+async startJob(bookingId: number, body: any){
+
+   if(body.otp!= null){
+    
+   const verifyOtp = await this.otpRepo.findOne({
+    where:{
+      Otp:body.otp
+    }
+  });
+
+   if(!verifyOtp){
+   throw new BadRequestException("incorrect otp")
+  }
+}
+  const booking = await this.bookingRepo.findOne({
+    where: {
+      id: bookingId,
+    },
+  });
+
+  if (!booking) {
+    throw new BadRequestException('Booking not found');
+  }
+
+  if (booking.status === BookingStatus.CANCELLED) {
+    throw new BadRequestException(
+      'Cancelled booking cannot be started',
+    );
+  }
+
+  if (booking.status === BookingStatus.COMPLETED) {
+    throw new BadRequestException(
+      'Booking is already completed',
+    );
+  }
+
+  booking.status = BookingStatus.IN_PROCESS;
+
+  await this.bookingRepo.save(booking);
+
+  return {
+    success: true,
+    message: 'Job started successfully',
+    data: booking,
+  };
+
+}
+
+async endJob(bookingId: number) {
+  const booking = await this.bookingRepo.findOne({
+    where: {
+      id: bookingId,
+    },
+  });
+
+  if (!booking) {
+    throw new BadRequestException('Booking not found');
+  }
+
+  if (booking.status === BookingStatus.CANCELLED) {
+    throw new BadRequestException(
+      'Cancelled booking cannot be completed',
+    );
+  }
+
+  if (booking.status === BookingStatus.COMPLETED) {
+    throw new BadRequestException(
+      'Booking is already completed',
+    );
+  }
+
+  if (booking.status !== BookingStatus.IN_PROCESS) {
+    throw new BadRequestException(
+      'Start the job before completing it',
+    );
+  }
+
+  booking.status = BookingStatus.COMPLETED;
+
+  await this.bookingRepo.save(booking);
+
+  return {
+    success: true,
+    message: 'Job completed successfully',
+    data: booking,
+  };
+}
+
+
+
+
+
+    }
+  
+
+
+      

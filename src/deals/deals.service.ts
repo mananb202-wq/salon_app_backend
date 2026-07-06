@@ -9,6 +9,8 @@ import {BranchIdDto} from '../salon/dto/branch-id.dto'
 import {BuyDealEntity} from './entities/buy-deal.entity'
 import { CustomerEntity } from '../customer/entities/create-customer.entity';
 import { ConsumerService } from '../consumer_service/entities/consumer_service.entity';
+import { RazorpayService } from '../payment/razorpay.service';
+import { PaymentEntity, PaymentStatus } from '../payment/entities/payment.entity';
  
 
 
@@ -32,6 +34,11 @@ export class DealsService {
 
       @InjectRepository(ConsumerService)
        private servicesRepo: Repository<ConsumerService>,
+
+        @InjectRepository(PaymentEntity)
+        private paymentRepo: Repository<PaymentEntity>,
+
+       private readonly razorpayService: RazorpayService,
 
      ){}
 
@@ -222,6 +229,9 @@ const savedDeal=await this.dealsRepo.save(createDeal);
        where : {
          id:dealId,
        },
+         relations: {
+    services: true,
+  },
       });
 
       if(!dealExists){
@@ -243,31 +253,48 @@ const savedDeal=await this.dealsRepo.save(createDeal);
       );
     };
 
-
-    const createBuyDeal= await this.buyDealsRepo.create({
-      deal:{
-      id:dealId,
-      },
-      customer:{
-        id:customerId
-      },  
-      expiresAt:dealExists.endDate,
-    })
-    try{
-    await this.buyDealsRepo.save(createBuyDeal)
-    }catch(error){
-      throw new BadRequestException(
-        'Failed to save deal in the database'
-      )
-    }
+    const serviceIds= dealExists.services.map(service => service.id);
+    let totalAmount=0
+     for(let i=0;i<serviceIds.length;i++){
+      const getAmount = await this.servicesRepo.findOne({
+        where:{
+          id:serviceIds[i]
+        }
+      });
+      totalAmount+=Number(getAmount?.price)
+     }
+    
+     
+    const order = await this.razorpayService.createOrder(
+        totalAmount,
+        `reservation_${dealId}`,
+      );
+    
+      const payment = this.paymentRepo.create({
+        razorpayOrderId: order.id,
+        amount: totalAmount,
+        status: PaymentStatus.PENDING,
+        deal:{
+          id:dealId
+        }
+        
+      });
+    
+      await this.paymentRepo.save(payment);
+    
+      return{
+        message:"order created",
+        data:{
+        orderId:order,
+        dealId,
+        customerId,
+    
+        }
 
      
 
     }
-
-
-
-
     
 
+}
 }

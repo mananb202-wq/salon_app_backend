@@ -22,6 +22,10 @@ import {DealsService} from './deals/deals.service';
 import { PackagesModule } from './packages/packages.module';
 import { BookingModule } from './booking/booking.module';
 import { CustomerModule } from './customer/customer.module';
+import { CartModule } from './cart/cart.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { PaymentModule } from './payment/payment.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 
 
@@ -29,7 +33,10 @@ import { CustomerModule } from './customer/customer.module';
 @Module({
   imports: [ConfigModule.forRoot({
       isGlobal: true,
+    
     }),
+        ScheduleModule.forRoot(),
+  
       TypeOrmModule.forRootAsync({
       inject: [ConfigService],
 
@@ -60,7 +67,10 @@ import { CustomerModule } from './customer/customer.module';
   DealsModule,
   PackagesModule,
   BookingModule,
-  CustomerModule],
+  CustomerModule,
+  CartModule,
+  PaymentModule,
+  AnalyticsModule],
 
   controllers: [AppController],
   providers: [AppService],

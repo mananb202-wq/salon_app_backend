@@ -9,6 +9,7 @@ import {
 
 import { DealsEntity } from './create-deals.entity';
 import { CustomerEntity } from '../../customer/entities/create-customer.entity';
+import { ConsumerService } from '../../consumer_service/entities/consumer_service.entity';
 
 @Entity('Buy_deal')
 export class BuyDealEntity {
@@ -34,6 +35,12 @@ export class BuyDealEntity {
           nullable: true,
          })
          usedAt!: Date;
+
+          @ManyToOne(() => ConsumerService)
+          @JoinColumn({
+            name: 'servicesId',
+          })
+          services!:ConsumerService;
 
           @Column({
           type: 'timestamptz',

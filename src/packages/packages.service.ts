@@ -7,9 +7,13 @@ import {ConsumerService} from '../consumer_service/entities/consumer_service.ent
 import { BranchIdDto } from '../salon/dto/branch-id.dto';
 import {UpdatePackageDto} from './dto/update-package.dto'
 import { BuyPackageEntity } from './entities/buy-package.entity';
+import { dot } from 'node:test/reporters';
+import { PaymentEntity, PaymentStatus } from '../payment/entities/payment.entity';
+import { RazorpayService } from '../payment/razorpay.service';
 
 @Injectable()
 export class PackagesService {
+
 
     constructor(
       @InjectRepository(PackageEntity)
@@ -20,6 +24,11 @@ export class PackagesService {
        
       @InjectRepository(BuyPackageEntity)
        private buyPackageRepo: Repository<BuyPackageEntity>,
+
+      @InjectRepository(PaymentEntity)
+      private paymentRepo: Repository<PaymentEntity>,
+
+      private readonly razorpayService: RazorpayService,
         
         
     ){}
@@ -361,57 +370,45 @@ switch (packageData.durationType) {
     );
     break;
 }
- 
-
-const seviceIds= packageData.services.map(service => service.id);
-
-for(let  i=0;i<seviceIds.length;i++){
- 
-const packageService= this.buyPackageRepo.create({
-
-  package:{
-    id:packageId
-  },
-  services:{
-    id:seviceIds[i]
-  },
-  costomer:{
-    id:customerId
-  },
-  expiresAt
-
+const serviceIds= packageData.services.map(service => service.id);
+let totalAmount=0
+ for(let i=0;i<serviceIds.length;i++){
+  const getAmount = await this.servicesRepo.findOne({
+    where:{
+      id:serviceIds[i]
+    }
   });
- try {
-  await this.buyPackageRepo.save(packageService);
-} catch (error) {
-  throw new BadRequestException(
-    `Failed to save service with id ${seviceIds[i]}`,
+  totalAmount+=Number(getAmount?.price)
+ }
+
+ 
+const order = await this.razorpayService.createOrder(
+    totalAmount,
+    `reservation_${packageId}`,
   );
-}
 
- }
+  const payment = this.paymentRepo.create({
+    razorpayOrderId: order.id,
+    amount: totalAmount,
+    status: PaymentStatus.PENDING,
+    package:{
+      id:packageId
+    }
+    
+  });
 
- const boughtPackage= await this.buyPackageRepo.find({
- where:{
-   costomer:{
-    id:customerId
-   },
-   package:{
-    id:packageId
-   }
- },
- relations:{
-  package:true,
-  services:true,
-  costomer:true,
- }
- });
+  await this.paymentRepo.save(payment);
 
- return {
-  success:true,
-  message:"you have bought the package",
-  data:boughtPackage
- }
+  return{
+    message:"order created",
+    data:{
+    orderId:order,
+    packageId,
+    customerId,
+    expiresAt
+
+    }
+  }
 
 }
 
