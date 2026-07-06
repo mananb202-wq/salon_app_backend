@@ -2,6 +2,7 @@ import {
   IsBoolean,
   IsNotEmpty,
   IsNumber,
+  IsOptional,
   IsString,
 } from 'class-validator';
 
@@ -14,12 +15,15 @@ export class TeamMemberScheduleDto {
   @IsNumber()
   dayId!: number;
 
+  @IsOptional()
   @IsString()
   openingTime!: string;
 
+  @IsOptional()
   @IsString()
   closingTime!: string;
 
+  @IsOptional()
   @IsBoolean()
   isWorking!: boolean;
 }

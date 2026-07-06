@@ -3,16 +3,27 @@ import {
   IsNumber,
   IsDateString,
   IsString,
+  IsOptional,
+  IsArray,
 } from 'class-validator';
 
-export class BookingDto{
+export class BookingDto {
   @IsNotEmpty()
   @IsNumber()
   branchId!: number;
 
-  @IsNotEmpty()
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  serviceIds?: number[];
+
+  @IsOptional()
   @IsNumber()
-  serviceId!: number;
+  packageId?: number;
+
+  @IsOptional()
+  @IsNumber()
+  dealId?: number;
 
   @IsNotEmpty()
   @IsNumber()
@@ -28,7 +39,7 @@ export class BookingDto{
 
   @IsNotEmpty()
   @IsDateString()
-  bookingDate!: Date;
+  bookingDate!: string;
 
   @IsNotEmpty()
   @IsString()

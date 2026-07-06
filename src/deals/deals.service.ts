@@ -5,9 +5,12 @@ import {DealTypeEntity} from './entities/deal-type.entity'
 import {CreateDealDto} from './dto/create-deal.dto'
 import {DealsEntity} from './entities/create-deals.entity'
 import {DeleteDealDto} from './dto/delete-deal.dto'
-import {UpdateDealDto} from './dto/update-deal.dto'
 import {BranchIdDto} from '../salon/dto/branch-id.dto'
-import { truncate } from 'fs';
+import {BuyDealEntity} from './entities/buy-deal.entity'
+import { CustomerEntity } from '../customer/entities/create-customer.entity';
+import { ConsumerService } from '../consumer_service/entities/consumer_service.entity';
+import { RazorpayService } from '../payment/razorpay.service';
+import { PaymentEntity, PaymentStatus } from '../payment/entities/payment.entity';
  
 
 
@@ -20,52 +23,122 @@ export class DealsService {
      
       @InjectRepository(DealsEntity)
       private dealsRepo: Repository<DealsEntity>,
-     ){}
-
-    async createDeal(dto: CreateDealDto) {
 
       
-      let finalPrice=0;
-      if(dto.dealTypeId==2){
-        let discount=(dto.originalPrice*dto.percentage!)/100
-        finalPrice=dto.originalPrice-discount
+      @InjectRepository(BuyDealEntity)
+      private buyDealsRepo: Repository<BuyDealEntity>,
 
-        if(discount > dto.maxDiscountAmount!){
-          discount=dto.maxDiscountAmount!
-          finalPrice=dto.originalPrice-discount
+      @InjectRepository(CustomerEntity)
+      private customerRepo: Repository<CustomerEntity>,
+
+
+      @InjectRepository(ConsumerService)
+       private servicesRepo: Repository<ConsumerService>,
+
+        @InjectRepository(PaymentEntity)
+        private paymentRepo: Repository<PaymentEntity>,
+
+       private readonly razorpayService: RazorpayService,
+
+     ){}
+
+async createDeal(dto: CreateDealDto) {
+
+  let totalPrice=0
+  let finalPrice=0
+    for(const servicesID of dto.serviceIds){
+      
+        const serviceData= await this.servicesRepo.findOne({
+        where:{
+            id:servicesID
         }
-      }else{
-        finalPrice=dto.value!
-      }
+      });
+      totalPrice+=Number(serviceData?.price!);
+     }
+
+
+     if (dto.dealTypeId === 1) {
+
+    if (dto.discountAmount == null) {
+      throw new BadRequestException(
+        'Discount amount is required',
+      );
+    }
+
+    finalPrice =
+      totalPrice - dto.discountAmount;
+
+    if (finalPrice < 0) {
+      finalPrice = 0;
+    }
+  }
+
+
+  else if (dto.dealTypeId === 2) {
+
+    if (dto.percentageDiscount == null) {
+      throw new BadRequestException(
+        'Percentage is required',
+      );
+    }
+
+    let discount =
+    (totalPrice * dto.percentageDiscount) / 100;
+
+    if (
+      dto.maxDiscountAmount != null &&
+      discount > dto.maxDiscountAmount
+    ) {
+      discount = dto.maxDiscountAmount;
+    }
+
+      finalPrice =
+      totalPrice - discount;
+  }
+
+   else {
+    throw new BadRequestException(
+      'Invalid deal type',
+    );
+  }
     
-        const createDeal=await this.dealsRepo.create({
-              name:dto.name,
-              branch:{
-                id:dto.branchId
-              },
-              services:{
-                id:dto.serviceId
-              },
-              deal_type:{
-                id:dto.dealTypeId
-              },
-              originalPrice:dto.originalPrice,
-              percentage:dto.percentage,
-              value:finalPrice,
-              isActive:dto.isActive,
-              startDate:dto.startDate,
-              endDate:dto.endDate,
-              maxDiscountAmount:dto.maxDiscountAmount
+  const createDeal=await this.dealsRepo.create({
+      name: dto.name,
+      branch: {
+        id: dto.branchId,
+      },
+      services: dto.serviceIds.map(id => ({
+        id,
+      })),
+      totalPrice:totalPrice,
+      finalPrice,
+      percentageDiscount: dto.percentageDiscount,
+      maxDiscountAmount:dto.maxDiscountAmount,
+      isActive: dto.isActive,
+      discountAmount:dto.discountAmount,
+      dealType: {
+        id: dto.dealTypeId,
+      },
+      startDate:dto.startDate,
+      endDate:dto.endDate,
+      })
 
-          })
+const savedDeal=await this.dealsRepo.save(createDeal);
 
-          await this.dealsRepo.save(createDeal);
+      const deal = await this.dealsRepo.findOne({
+      where: { id: savedDeal.id },
+      relations:{
+        branch:true,
+        services:true,
+        dealType:true
+      },
+     });
 
-          return {
-            success:true,
-            message:"Deal created",
-            data:createDeal
-          }
+    return {
+      success:true,
+      message:"Deal created",
+      data:deal
+      }
      
     }
 
@@ -94,104 +167,6 @@ export class DealsService {
       }
 
     }
-
-  async updateDeal(index: number, dto: UpdateDealDto) {
-
-  const deals = await this.dealsRepo.find({
-    where: {
-      branch: {
-        id: dto.branchId,
-      },
-    },
-    relations: {
-      deal_type: true,
-    },
-  });
-
-  const deal = deals[index];
-
-  if (!deal) {
-    throw new NotFoundException('Deal not found');
-  }
-
-  const dealTypeId =
-    dto.dealTypeId ?? deal.deal_type.id;
-
-  // Update basic fields FIRST (safe assignment)
-  if (dto.name !== undefined) deal.name = dto.name;
-  if (dto.originalPrice !== undefined) deal.originalPrice = dto.originalPrice;
-  if (dto.isActive !== undefined) deal.isActive = dto.isActive;
-  if (dto.startDate !== undefined) deal.startDate = dto.startDate;
-  if (dto.endDate !== undefined) deal.endDate = dto.endDate;
-  if (dto.branchId !== undefined) {
-    deal.branch = { id: dto.branchId } as any;
-  }
-
- 
-  if (dto.dealTypeId !== undefined) {
-    deal.deal_type = { id: dto.dealTypeId } as any;
-  }
-
- 
-  if (dealTypeId === 1) {
-
-    if (dto.value == null && deal.value == null) {
-      throw new BadRequestException(
-        'Flat discount value required',
-      );
-    }
-
-    deal.percentage = null as any;
-    deal.maxDiscountAmount = null as any;
-
-    const discount = dto.value ?? deal.value;
-
-    deal.value =
-      deal.originalPrice - discount!;
-  }
-
-  if (dealTypeId === 2) {
-
-    if (
-      dto.percentage == null &&
-      deal.percentage == null
-    ) {
-      throw new BadRequestException(
-        'Percentage is required',
-      );
-    }
-
-    if (dto.percentage !== undefined) {
-      deal.percentage = dto.percentage;
-    }
-
-    if (dto.maxDiscountAmount !== undefined) {
-      deal.maxDiscountAmount =
-        dto.maxDiscountAmount;
-    }
-
-    let discount =
-      (deal.originalPrice * deal.percentage!) / 100;
-
-    if (
-      deal.maxDiscountAmount &&
-      discount > deal.maxDiscountAmount
-    ) {
-      discount = deal.maxDiscountAmount;
-    }
-
-    deal.value =
-      deal.originalPrice - discount;
-  }
-
-  await this.dealsRepo.save(deal);
-
-  return {
-    success: true,
-    message: 'Deal updated',
-    data: deal,
-  };
-}
 
 
 
@@ -232,7 +207,7 @@ export class DealsService {
         relations:{
           branch:true,
           services:true,
-          deal_type:true 
+          dealType:true
         }
       });
 
@@ -248,9 +223,78 @@ export class DealsService {
 
     }
 
+    async buyDeal(dealId:number,customerId:number){
+     
+      const dealExists= await this.dealsRepo.findOne({
+       where : {
+         id:dealId,
+       },
+         relations: {
+    services: true,
+  },
+      });
+
+      if(!dealExists){
+         throw new BadRequestException(
+        'deal does not exists',
+      );
+    }
+
+    const customerExists= await this.customerRepo.findOne({
+      where:{
+        id:customerId,
+      },
+    });
 
 
+    if(!customerExists){
+      throw new BadRequestException(
+        'customer does not exists'
+      );
+    };
 
+    const serviceIds= dealExists.services.map(service => service.id);
+    let totalAmount=0
+     for(let i=0;i<serviceIds.length;i++){
+      const getAmount = await this.servicesRepo.findOne({
+        where:{
+          id:serviceIds[i]
+        }
+      });
+      totalAmount+=Number(getAmount?.price)
+     }
+    
+     
+    const order = await this.razorpayService.createOrder(
+        totalAmount,
+        `reservation_${dealId}`,
+      );
+    
+      const payment = this.paymentRepo.create({
+        razorpayOrderId: order.id,
+        amount: totalAmount,
+        status: PaymentStatus.PENDING,
+        deal:{
+          id:dealId
+        }
+        
+      });
+    
+      await this.paymentRepo.save(payment);
+    
+      return{
+        message:"order created",
+        data:{
+        orderId:order,
+        dealId,
+        customerId,
+    
+        }
+
+     
+
+    }
     
 
+}
 }

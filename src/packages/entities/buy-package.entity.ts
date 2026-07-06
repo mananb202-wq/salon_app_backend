@@ -43,5 +43,10 @@ export class BuyPackageEntity{
         name: 'customerId',
     })
     costomer!:CustomerEntity;
-    
+
+    @Column({
+    type: 'timestamptz',
+    nullable: true,
+     })
+    expiresAt!: Date;
 }

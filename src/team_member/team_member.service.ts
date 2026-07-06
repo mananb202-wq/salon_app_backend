@@ -13,6 +13,7 @@ import {ConsumerService} from '../consumer_service/entities/consumer_service.ent
 import {BranchService} from '../salon/entities/branch-sevices.entity'
 import { TeamMemberScheduleDto } from './dto/team_member-schedule.dto';
 import { TeamMemberScheduleEntity } from './entities/team_member-schedule.entity';
+import { BranchSchedule } from '../salon/entities/branch-schedule.entity';
 
 
 
@@ -39,6 +40,9 @@ constructor(
                  
               @InjectRepository(TeamMemberScheduleEntity)
               private teamMemberScheduleRepo: Repository<TeamMemberScheduleEntity>,
+
+              @InjectRepository(BranchSchedule)
+              private branchScheduleRepo: Repository<BranchSchedule>,
 
        ){}
 
@@ -95,7 +99,7 @@ constructor(
         throw new BadRequestException("Member already exixsts in this branch")
        }
        
-       const teamMember= await this.teamMemberRepo.create({
+       const addteamMember= await this.teamMemberRepo.create({
         first_name:dto.firstName,
         last_name:dto.lastName,
         mobile_number:dto.mobileNumber,
@@ -107,9 +111,35 @@ constructor(
           id:selectedBranchId
         }
        })
+       await this.teamMemberRepo.save(addteamMember);
+  
+      const branchSchedule= await this.branchScheduleRepo.find({
+        where:{
+          branch:{id:selectedBranchId}
+        },
+         relations: {
+    workingday: true,
+  },
+       });
 
-       await this.teamMemberRepo.save(teamMember);
+       if(!branchSchedule){
+        throw new BadRequestException("branch schedule does not exists")
+       }   
 
+
+       for(let i=0;i<branchSchedule.length;i++){
+        
+        const initTeamMemberSchedule= await this.teamMemberScheduleRepo.create({
+          teamMember:{id:addteamMember.id},
+          workingDay:{id:branchSchedule[i].workingday.id},
+          openingTime:branchSchedule[i].Opening_Timmings,
+          closingTime:branchSchedule[i].Closing_Timmings,
+          isWorking:branchSchedule[i].isOpen
+        });
+
+        await this.teamMemberScheduleRepo.save(initTeamMemberSchedule)
+       }
+      
        return {
         success:true,
         message:"team member is added"
@@ -126,8 +156,6 @@ constructor(
   },
     }
   );
-
-
 
     if(!teamMemberExists){
       throw new BadRequestException("team memeber not exists")
@@ -161,9 +189,7 @@ constructor(
         }
       });
 
-      console.log(serviceExists)
 
-       console.log(teamMemberExists.branch.id)
       const addTeamMemberService= await this.teamMemberServiceRepo.create({
         teamMember:{
        id:teamMemberExists.id
@@ -251,7 +277,7 @@ const teamMember =
 
 async addTeamMemberSchedule(dto: TeamMemberScheduleDto){
 
-  const scheduleExists =
+  const schedule =
     await this.teamMemberScheduleRepo.findOne({
       where: {
         teamMember: {
@@ -263,27 +289,27 @@ async addTeamMemberSchedule(dto: TeamMemberScheduleDto){
       },
     });
  
-  if (scheduleExists) {
-    throw new BadRequestException(
-      'Schedule already exists for this day',
-    );
-  }
+    if (!schedule) {
+  throw new NotFoundException(
+    'Team member schedule not found',
+  );}
 
-  const schedule =
-    this.teamMemberScheduleRepo.create({
-      teamMember: {
-        id: dto.teamMemberId,
-      },
-      workingDay: {
-        id: dto.dayId,
-      },
-      openingTime: dto.openingTime,
-      closingTime: dto.closingTime,
-      isWorking: dto.isWorking,
-    });
+    
+if (dto.openingTime !== undefined) {
+  schedule!.openingTime = dto.openingTime;
+}
 
+if (dto.closingTime !== undefined) {
+  schedule!.closingTime = dto.closingTime;
+}
+
+if (dto.isWorking !== undefined) {
+  schedule!.isWorking = dto.isWorking;
+}
+
+  
   await this.teamMemberScheduleRepo.save(
-    schedule,
+    schedule!
   );
 
   return {

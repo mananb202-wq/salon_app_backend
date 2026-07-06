@@ -2,14 +2,18 @@ import { Injectable,BadRequestException, NotFoundException } from '@nestjs/commo
 import {CreatePackage} from './dto/create-package.dto'
 import {InjectRepository} from "@nestjs/typeorm";
 import {Repository} from "typeorm";
-import {PackageEntity} from './entities/package.entity'
+import {DurationType, PackageEntity} from './entities/package.entity'
 import {ConsumerService} from '../consumer_service/entities/consumer_service.entity'
 import { BranchIdDto } from '../salon/dto/branch-id.dto';
 import {UpdatePackageDto} from './dto/update-package.dto'
 import { BuyPackageEntity } from './entities/buy-package.entity';
+import { dot } from 'node:test/reporters';
+import { PaymentEntity, PaymentStatus } from '../payment/entities/payment.entity';
+import { RazorpayService } from '../payment/razorpay.service';
 
 @Injectable()
 export class PackagesService {
+
 
     constructor(
       @InjectRepository(PackageEntity)
@@ -20,6 +24,11 @@ export class PackagesService {
        
       @InjectRepository(BuyPackageEntity)
        private buyPackageRepo: Repository<BuyPackageEntity>,
+
+      @InjectRepository(PaymentEntity)
+      private paymentRepo: Repository<PaymentEntity>,
+
+      private readonly razorpayService: RazorpayService,
         
         
     ){}
@@ -97,8 +106,8 @@ async addPackage(dto:CreatePackage, req:any){
       finalPrice,
       percentageDiscount: dto.percentageDiscount,
       maxDiscountAmount:dto.maxDiscountAmount,
-      startDate: dto.startDate,
-      endDate: dto.endDate,
+      duration:dto.duration,
+      durationType:dto.durationType,
       isActive: dto.isActive,
       discountAmount:dto.discountAmount,
       dealType: {
@@ -186,17 +195,7 @@ async updatePackage(
     getPackage.isActive = dto.isActive;
   }
 
-  if (dto.startDate !== undefined) {
-    getPackage.startDate = new Date(
-      dto.startDate,
-    );
-  }
 
-  if (dto.endDate !== undefined) {
-    getPackage.endDate = new Date(
-      dto.endDate,
-    );
-  }
 
  
   if (dto.dealType !== undefined) {
@@ -350,57 +349,66 @@ async buyPackage(packageId:number,customerId){
         'package not found',
       );
  }
+const expiresAt = new Date();
 
-const seviceIds= packageData.services.map(service => service.id);
+switch (packageData.durationType) {
+  case DurationType.DAYS:
+    expiresAt.setDate(
+      expiresAt.getDate() + packageData.duration,
+    );
+    break;
 
-for(let  i=0;i<seviceIds.length;i++){
- 
-const packageService= this.buyPackageRepo.create({
+  case DurationType.MONTHS:
+    expiresAt.setMonth(
+      expiresAt.getMonth() + packageData.duration,
+    );
+    break;
 
-  package:{
-    id:packageId
-  },
-  services:{
-    id:seviceIds[i]
-  },
-  costomer:{
-    id:customerId
-  }
-
-  });
- try {
-  await this.buyPackageRepo.save(packageService);
-} catch (error) {
-  throw new BadRequestException(
-    `Failed to save service with id ${seviceIds[i]}`,
-  );
+  case DurationType.YEARS:
+    expiresAt.setFullYear(
+      expiresAt.getFullYear() + packageData.duration,
+    );
+    break;
 }
-
+const serviceIds= packageData.services.map(service => service.id);
+let totalAmount=0
+ for(let i=0;i<serviceIds.length;i++){
+  const getAmount = await this.servicesRepo.findOne({
+    where:{
+      id:serviceIds[i]
+    }
+  });
+  totalAmount+=Number(getAmount?.price)
  }
 
- const boughtPackage= await this.buyPackageRepo.find({
- where:{
-   costomer:{
-    id:customerId
-   },
-   package:{
-    id:packageId
-   }
- },
- relations:{
-  package:true,
-  services:true,
-  costomer:true,
- }
- });
+ 
+const order = await this.razorpayService.createOrder(
+    totalAmount,
+    `reservation_${packageId}`,
+  );
 
+  const payment = this.paymentRepo.create({
+    razorpayOrderId: order.id,
+    amount: totalAmount,
+    status: PaymentStatus.PENDING,
+    package:{
+      id:packageId
+    }
+    
+  });
 
+  await this.paymentRepo.save(payment);
 
- return {
-  success:true,
-  message:"you have bought the package",
-  data:boughtPackage
- }
+  return{
+    message:"order created",
+    data:{
+    orderId:order,
+    packageId,
+    customerId,
+    expiresAt
+
+    }
+  }
 
 }
 

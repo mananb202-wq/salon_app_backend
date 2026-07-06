@@ -10,12 +10,13 @@ import {TeamMemberServiceEntity} from "./entities/team_member_service.entity"
 import {ConsumerService} from "../consumer_service/entities/consumer_service.entity"
 import {BranchService} from '../salon/entities/branch-sevices.entity'
 import { TeamMemberScheduleEntity } from './entities/team_member-schedule.entity';
+import { BranchSchedule } from '../salon/entities/branch-schedule.entity';
 
 
 @Module({
 
      imports: [
-        TypeOrmModule.forFeature([Salon,BranchEntity,TeamMember,TeamMemberServiceEntity,ConsumerService,BranchService,TeamMemberScheduleEntity]),
+        TypeOrmModule.forFeature([Salon,BranchEntity,TeamMember,TeamMemberServiceEntity,ConsumerService,BranchService,TeamMemberScheduleEntity,BranchSchedule]),
           AuthModule,
       ],
   controllers: [TeamMemberController],
