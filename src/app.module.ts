@@ -26,6 +26,7 @@ import { CartModule } from './cart/cart.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PaymentModule } from './payment/payment.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { InventoryModule } from './inventory/inventory.module';
 
 
 
@@ -70,7 +71,8 @@ import { AnalyticsModule } from './analytics/analytics.module';
   CustomerModule,
   CartModule,
   PaymentModule,
-  AnalyticsModule],
+  AnalyticsModule,
+  InventoryModule],
 
   controllers: [AppController],
   providers: [AppService],
