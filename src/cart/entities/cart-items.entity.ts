@@ -50,3 +50,4 @@ export class CartItemEntity {
   @JoinColumn({ name: 'BranchId' })
   branch!: BranchEntity;
 }
+``
